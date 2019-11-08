@@ -11,25 +11,25 @@
 
 uint8_t mainState = 0;//we set to an invalid state so the loop is forced to properly set up in safe state
 
-uint32_t jukeStartTime = 0;
-
 uint32_t loopTime = 0;//in us
-uint32_t lastMotorSendTime = 0;
 
 uint8_t stickSwitchDebounce = 0;
+
+int16_t beaconOffset = 90;
+
+uint8_t led_on = 0;
+uint32_t led_time = 0;
 
 void loop() {
 
 	//USER INITIALIZATION FUNCTIONS
 	initTimers();
-	initAnimations();
-	setAnimation(STATE_SAFE);
+	initLEDs();
 	initADCs();
 	initSerial();
 	initWatchdog();
 	initMotors();
 	initAccelerometer();
-	//initLidar();
 
 	//turnSourceOn();
 
@@ -46,7 +46,14 @@ void loop() {
 		}
 
 		//switch debouncing functions
-		if(stickSwitchDebounce && !getStickSwitch()) stickSwitchDebounce = 0;
+		if(stickSwitchDebounce && !getStickSwitch()) {
+			//switch released
+			stickSwitchDebounce = 0;
+		} else if(!stickSwitchDebounce && getStickSwitch()) {
+			//switch pressed
+			stickSwitchDebounce = 1;
+			beaconOffset = (beaconOffset == 90) ? 270 : 90;
+		}
 
 		switch(mainState) {
 		case(STATE_SAFE):
@@ -56,117 +63,38 @@ void loop() {
 
 		case(STATE_IDLE):
 			//this state is when we have communications with the controller, but it's telling us to stay disabled
-			if(isEnabled()) {
-				if(commandedThrottle() > 10) {
-					setState(STATE_SPIN);
-				} else {
-					setState(STATE_DRIVE);
+			if(isEnabled()) setState(STATE_SPIN);
+
+			setMotorSpeed(0);//make damn sure the motor is stopped
+			runMotors();
+
+			if((getMilliseconds() - led_time) > 1000) {
+				if(led_on) {
+					setLEDs(50, 50, 0);
+					led_on = 0;
+				} else if(!led_on) {
+					setLEDs(100, 100, 0);
+					led_on = 1;
 				}
+				led_time = getMilliseconds();
 			}
-
-			if(getStickSwitch() && !stickSwitchDebounce) {
-				stickSwitchDebounce = 1;
-				setState(STATE_PREJUKE);
-			}
-
-#ifdef MC_DSHOT
-			//make sure we don't go *too* fast so the motor controllers don't freak out
-			if(loopTime - lastMotorSendTime < MIN_MOTOR_TIME) break;
-			lastMotorSendTime = loopTime;
-
-			setMotorSpeed2(MOTOR1, 0);
-			setMotorSpeed2(MOTOR2, 0);
-#endif
-			break;
-
-		case(STATE_PREJUKE):
-			//this state is like idle, but we are going to do a juke maneuver if we go to spin mode next
-			if(isEnabled()) {
-				if(commandedThrottle() > 10) {
-					jukeStartTime = getMicroseconds();
-					setState(STATE_JUKE);
-				} else {
-					setState(STATE_DRIVE);
-				}
-			}
-
-			if(getStickSwitch() && !stickSwitchDebounce) {
-				stickSwitchDebounce = 1;
-				setState(STATE_IDLE);
-			}
-
-#ifdef MC_DSHOT
-			//make sure we don't go *too* fast so the motor controllers don't freak out
-			if(loopTime - lastMotorSendTime < MIN_MOTOR_TIME) break;
-			lastMotorSendTime = loopTime;
-
-			setMotorSpeed2(MOTOR1, 0);
-			setMotorSpeed2(MOTOR2, 0);
-#endif
-			break;
-
-		case(STATE_JUKE):
-			if(getMicroseconds() - jukeStartTime > 500000) {
-				setState(STATE_SPIN);
-			}
-
-#ifdef MC_DSHOT
-			//make sure we don't go *too* fast so the motor controllers don't freak out
-			if(loopTime - lastMotorSendTime < MIN_MOTOR_TIME) break;
-			lastMotorSendTime = loopTime;
-
-			setMotorSpeed(MOTOR1, 400, MOTOR_DIR_CW);
-			setMotorSpeed(MOTOR2, 400, MOTOR_DIR_CCW);
-#endif
-			break;
-
-		case(STATE_DRIVE):
-			//this state drives the robot in standard arcade mode
-			if(!isEnabled()) setState(STATE_IDLE);
-			if(commandedThrottle() > 10) {
-				setState(STATE_SPIN);
-				continue;
-			}
-
-
-#ifdef MC_DSHOT
-			//make sure we don't go *too* fast so the motor controllers don't freak out
-			if(loopTime - lastMotorSendTime < MIN_MOTOR_TIME) break;
-			lastMotorSendTime = loopTime;
-#endif
-
-			setMotorSpeed2(MOTOR1, -1*(getThumbX() - getThumbY()/2));
-			setMotorSpeed2(MOTOR2, getThumbX() + getThumbY()/2);
-
 			break;
 
 		case(STATE_SPIN):
 			//this state drives the robot in meltybrain mode
 			if(!isEnabled()) setState(STATE_IDLE);
-			if(commandedThrottle() <= 10) {
-				setState(STATE_DRIVE);
-				continue;
-			}
 
-			runHybridSensing();
-			//runBeacon();
 
-			//this is the master heading variable. If we want to change what sensor combinations are feeding us
-			//our heading, we do that in the following line
-			int16_t heading = getHybridAngle();
-			//int16_t heading = getAccelAngle();
+			//this is the master heading calculation. If we want to change what sensor combinations are feeding us
+			//our heading, we do that in the following lines
+   			//runBeacon();
 			//int16_t heading = getBeaconAngle();
+   			//runAccelerometer();
+			//int16_t heading = getAccelAngle();
+			runHybridSensing();
+			int16_t heading = (getHybridAngle() + beaconOffset) % 360;
 
-			runPOVAnimation(heading);
-
-			//MOTOR COMMAND
-#ifdef MC_DSHOT
-			//make sure we don't go *too* fast so the motor controllers don't freak out
-			if(loopTime - lastMotorSendTime < MIN_MOTOR_TIME) break;
-			lastMotorSendTime = loopTime;
-#endif
-
-			uint16_t speed = (commandedThrottle()/2)*(getDirSwitch() ? -1 : 1);
+			int16_t speed = ((int16_t) (commandedThrottle())/2)*getDirSwitch();
 
 			//first check if the melty throttle is high enough for translation
 			if (getMeltyThrottle() > 10) {
@@ -177,30 +105,39 @@ void loop() {
 				//now check if we are pointed more towards the commanded direction or the opposite
 				if(diff < 90) {
 				  //we are pointing towards the commanded heading, forward pulse
-				  setMotorSpeed2(MOTOR1, speed-40);
-				  setMotorSpeed2(MOTOR2, speed+40);
+				  setMotorSpeed(speed/2);
 				} else {
 				  //we are pointing opposite the commanded heading, reverse pulse
-				  setMotorSpeed2(MOTOR1, speed+40);
-				  setMotorSpeed2(MOTOR2, speed-40);
+				  setMotorSpeed(speed);
+				}
+
+				//ANIMATION
+				if(diff < 10) {
+					setLEDs(0, 0, 100);
+				} else if(heading < 180) {
+					setLEDs(0, 100, 0);
+				} else {
+					setLEDs(100, 0, 0);
 				}
 			} else {
 				//if we aren't translating, just run the motors at the throttle speed
-				setMotorSpeed2(MOTOR1, speed);
-				setMotorSpeed2(MOTOR2, speed);
+				setMotorSpeed(speed);
+
+				//ANIMATION
+				if(heading < 180) {
+					setLEDs(0, 100, 0);
+				} else {
+					setLEDs(100, 0, 0);
+				}
 			}
+
+			runMotors();
 
 			break;
 
 		default:
 			setState(STATE_SAFE);
 			break;
-		}
-
-		if(mainState != STATE_SPIN) {
-			runTimeAnimation();
-		} else {
-			//if(upToSpeed()) runPOVAnimation(heading);
 		}
 	}
 }
@@ -222,7 +159,10 @@ void setState(uint8_t newState) {
 
 	case(STATE_SAFE):
 		mainState = newState;
-#if defined(MC_DRV8320) || defined(MC_ONESHOT125)
+
+    	setLEDs(100, 0, 0);
+
+#ifdef MC_ONESHOT125
 		disableMotors();
 #endif
 		break;
@@ -230,64 +170,21 @@ void setState(uint8_t newState) {
 
 	case(STATE_IDLE):
 		mainState = newState;
+
 #ifdef MC_ONESHOT125
 		setMotorSpeed2(MOTOR1, 0);
-		setMotorSpeed2(MOTOR2, 0);
-#endif
-
-#ifdef MC_DRV8320
-		setMotorBrake(MOTOR1, MOTOR_BRAKE_ON);
-		setMotorBrake(MOTOR2, MOTOR_BRAKE_ON);
-#endif
-		break;
-
-
-	case(STATE_PREJUKE):
-		mainState = newState;
-		break;
-
-
-	case(STATE_JUKE):
-		mainState = newState;
-#ifdef MC_DRV8320
-		setMotorBrake(MOTOR1, MOTOR_BRAKE_OFF);
-		setMotorBrake(MOTOR2, MOTOR_BRAKE_OFF);
-#endif
-
-#if defined(MC_DRV8320) || defined(MC_ONESHOT125)
-		enableMotors();
-#endif
-		break;
-
-
-	case(STATE_DRIVE):
-		mainState = newState;
-#ifdef MC_DRV8320
-		setMotorBrake(MOTOR1, MOTOR_BRAKE_OFF);
-		setMotorBrake(MOTOR2, MOTOR_BRAKE_OFF);
-#endif
-
-#if defined(MC_DRV8320) || defined(MC_ONESHOT125)
-		enableMotors();
 #endif
 		break;
 
 
 	case(STATE_SPIN):
 		mainState = newState;
-#ifdef MC_DRV8320
-		setMotorBrake(MOTOR1, MOTOR_BRAKE_OFF);
-		setMotorBrake(MOTOR2, MOTOR_BRAKE_OFF);
-#endif
 
-#if defined(MC_DRV8320) || defined(MC_ONESHOT125)
+#ifdef MC_ONESHOT125
 		enableMotors();
 #endif
 		break;
 
 
 	}
-
-	//assuming the state change was successful, change the animation pattern
-	if(newState == mainState) setAnimation(mainState);
 }

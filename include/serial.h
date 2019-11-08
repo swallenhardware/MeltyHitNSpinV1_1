@@ -15,10 +15,12 @@
 
 void initSerial(void);
 
+void periodicReturnU16_ASCII(uint16_t value);
 void periodicReturnU16(uint16_t value);
 void sendBulkU16(uint16_t *data, uint16_t size, uint16_t *dataSent);
 void periodicReturnU32(uint32_t value);
 void periodicReturnCalibration(uint32_t time, uint16_t accel);
+void periodicReturnMagnetometer(int16_t y, int16_t z);
 
 void receiveSerial(void);
 
@@ -39,7 +41,7 @@ int16_t getMeltyAngle(void);
 int16_t getThumbX(void);
 int16_t getThumbY(void);
 
-uint8_t getDirSwitch(void);
+int16_t getDirSwitch(void);
 uint8_t getModeSwitch(void);
 uint8_t getStickSwitch(void);
 

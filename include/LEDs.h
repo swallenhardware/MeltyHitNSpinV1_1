@@ -11,18 +11,9 @@
 #include <stdlib.h>
 #include "stm32f4xx.h"
 #include "stm32f4xx_hal.h"
+#include "params.h"
 
-typedef struct __Frame {
-	uint16_t duration;//in half-degrees or milliseconds
-	struct {
-		uint8_t red;
-		uint8_t green;
-		uint8_t blue;
-	} led[7];
-	struct __Frame *next;
-} *Frame_P, Frame;
-
-extern void LED_init(void);
-extern void updateLEDs(Frame_P f);
+extern void initLEDs(void);
+extern void setLEDs(uint8_t r, uint8_t g, uint8_t b);
 
 #endif /* LEDS_H_ */

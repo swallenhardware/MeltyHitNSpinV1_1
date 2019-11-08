@@ -48,38 +48,38 @@ endif
 
 # Add inputs and outputs from these tool invocations to the build variables 
 SECONDARY_FLASH += \
-HaloGen2.hex \
+HitNSpin.hex \
 
 SECONDARY_SIZE += \
-HaloGen2.siz \
+HitNSpin.siz \
 
 
 # All Target
-all: HaloGen2.elf secondary-outputs
+all: HitNSpin.elf secondary-outputs
 
 # Tool invocations
-HaloGen2.elf: $(OBJS) $(USER_OBJS)
+HitNSpin.elf: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: Cross ARM GNU C++ Linker'
-	arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=soft -O1 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -Wall -Wextra -T mem.ld -T libs.ld -T sections.ld -nostartfiles -Xlinker --gc-sections -L"../ldscripts" -Wl,-Map,"HaloGen2.map" --specs=nano.specs -o "HaloGen2.elf" $(OBJS) $(USER_OBJS) $(LIBS)
+	arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -mfloat-abi=soft -O1 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -Wall -Wextra -T mem.ld -T libs.ld -T sections.ld -nostartfiles -Xlinker --gc-sections -L"../ldscripts" -Wl,-Map,"HitNSpin.map" --specs=nano.specs -o "HitNSpin.elf" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 
-HaloGen2.hex: HaloGen2.elf
+HitNSpin.hex: HitNSpin.elf
 	@echo 'Invoking: Cross ARM GNU Create Flash Image'
-	arm-none-eabi-objcopy -O ihex "HaloGen2.elf"  "HaloGen2.hex"
+	arm-none-eabi-objcopy -O ihex "HitNSpin.elf"  "HitNSpin.hex"
 	@echo 'Finished building: $@'
 	@echo ' '
 
-HaloGen2.siz: HaloGen2.elf
+HitNSpin.siz: HitNSpin.elf
 	@echo 'Invoking: Cross ARM GNU Print Size'
-	arm-none-eabi-size --format=berkeley "HaloGen2.elf"
+	arm-none-eabi-size --format=berkeley "HitNSpin.elf"
 	@echo 'Finished building: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) $(CC_DEPS)$(C++_DEPS)$(OBJS)$(C_UPPER_DEPS)$(CXX_DEPS)$(SECONDARY_FLASH)$(SECONDARY_SIZE)$(ASM_DEPS)$(S_UPPER_DEPS)$(C_DEPS)$(CPP_DEPS) HaloGen2.elf
+	-$(RM) $(CC_DEPS)$(C++_DEPS)$(OBJS)$(C_UPPER_DEPS)$(CXX_DEPS)$(SECONDARY_FLASH)$(SECONDARY_SIZE)$(ASM_DEPS)$(S_UPPER_DEPS)$(C_DEPS)$(CPP_DEPS) HitNSpin.elf
 	-@echo ' '
 
 secondary-outputs: $(SECONDARY_FLASH) $(SECONDARY_SIZE)

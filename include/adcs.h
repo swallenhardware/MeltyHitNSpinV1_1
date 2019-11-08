@@ -15,7 +15,6 @@ void initADCs(void);
 
 uint16_t getVBatt(void);
 uint16_t getPhotoDiode(void);
-uint16_t getBandPass(void);
 
 void runBeacon(void);
 int16_t getBeaconAngle();

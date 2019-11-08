@@ -10,54 +10,105 @@
 
 #include "stm32f4xx_hal.h"
 #include "params.h"
+#include "time.h"
 
-//#define MC_DRV8320
 #define MC_DSHOT
 //#define MC_ONESHOT125
 
 #define MOTOR1 1
 #define MOTOR2 2
 
-#define MOTOR_DIR_CW 0
-#define MOTOR_DIR_CCW 1
-#define MOTOR_BRAKE_ON 0
-#define MOTOR_BRAKE_OFF 1
-
 #define MOTOR_MAX_SPEED 512
+
+#define MOTOR_ACCEL_RATE 8//in us per LSB. gives a 4ms ramp time
+//#define MOTOR_ACCEL_RATE 3906//gives a 2s ramp time, for testing the ramp code
 
 #define MOTOR_DEADZONE 100//the minimum speed value before the motors are engaged
 
 void initMotors(void);
 
-void setMotorSpeed(uint8_t motor, uint16_t speed, uint8_t dir);
-void setMotorSpeed2(uint8_t motor, int16_t speed);
+void setMotorSpeed(int16_t speed);
+
+void runMotors(void);
 
 #ifdef MC_DSHOT
-//all of these values are tuned for a base peripheral clock of 40,000,000Hz
 	//#define DSHOT300
 	//#define DSHOT600
 	#define DSHOT1200
 
+//the minimum amount of time before a new dshot command should be sent, in us
 	#ifdef DSHOT300
-		#define DSHOT_PERIOD 100//80MHz: 132
-		#define DSHOT_1_TIME 75//80MHz: 104
-		#define DSHOT_0_TIME 37//80MHz: 52
 		#define MIN_MOTOR_TIME 400UL
 	#endif
 
 	#ifdef DSHOT600
-		#define DSHOT_PERIOD 50 //80MHz: 66
-		#define DSHOT_1_TIME 38 //80MHz: 52 75% of 600 baud, tuned for 1250ns
-		#define DSHOT_0_TIME 19 //80MHz: 26 37% of 600 baud, tuned for 625ns
-		#define MIN_MOTOR_TIME 200UL//in us
+		#define MIN_MOTOR_TIME 200UL
 	#endif
 
 	#ifdef DSHOT1200
-		#define DSHOT_PERIOD 25 //80MHz: 33
-		#define DSHOT_1_TIME 19 //80MHz: 26
-		#define DSHOT_0_TIME 9 //80MHz: 13
 		#define MIN_MOTOR_TIME 100UL
 	#endif
+
+//these values represent the correct tick counts to create various DSHOT baud rates at various base clock frequencies
+#if MAIN_CLOCK == 60//in MHz
+	#ifdef DSHOT300
+		#define DSHOT_PERIOD 100
+		#define DSHOT_1_TIME 75
+		#define DSHOT_0_TIME 37
+	#endif
+
+	#ifdef DSHOT600
+		#define DSHOT_PERIOD 50
+		#define DSHOT_1_TIME 38 //75% of 600 baud, tuned for 1250ns
+		#define DSHOT_0_TIME 19 //37% of 600 baud, tuned for 625ns
+	#endif
+
+	#ifdef DSHOT1200
+		#define DSHOT_PERIOD 25
+		#define DSHOT_1_TIME 19
+		#define DSHOT_0_TIME 9
+	#endif
+#endif
+
+#if MAIN_CLOCK == 80
+	#ifdef DSHOT300
+		#define DSHOT_PERIOD 132
+		#define DSHOT_1_TIME 104
+		#define DSHOT_0_TIME 52
+	#endif
+
+	#ifdef DSHOT600
+		#define DSHOT_PERIOD 66
+		#define DSHOT_1_TIME 52
+		#define DSHOT_0_TIME 26
+	#endif
+
+	#ifdef DSHOT1200
+		#define DSHOT_PERIOD 33
+		#define DSHOT_1_TIME 26
+		#define DSHOT_0_TIME 13
+	#endif
+#endif
+
+#if MAIN_CLOCK == 120
+	#ifdef DSHOT300
+		#define DSHOT_PERIOD 200
+		#define DSHOT_1_TIME 150
+		#define DSHOT_0_TIME 74
+	#endif
+
+	#ifdef DSHOT600
+		#define DSHOT_PERIOD 100
+		#define DSHOT_1_TIME 75
+		#define DSHOT_0_TIME 37
+	#endif
+
+	#ifdef DSHOT1200
+		#define DSHOT_PERIOD 50
+		#define DSHOT_1_TIME 38
+		#define DSHOT_0_TIME 19
+	#endif
+#endif
 
 //this typedef taken from src\main\drivers\pwm_output.h in the betaflight github page
 typedef enum {
@@ -91,7 +142,7 @@ typedef enum {
     DSHOT_CMD_MAX = 47
 } dshotCommands_e;
 
-void issueDshotCommand(uint8_t motor, uint16_t command);
+void issueDshotCommand(uint16_t command);
 void armMotors(void);
 #endif
 
@@ -99,12 +150,6 @@ void armMotors(void);
 #define ONESHOT_PERIOD 10000
 void disableMotors(void);
 void enableMotors(void);
-#endif
-
-#ifdef MC_DRV8320
-void enableMotors(void);
-void disableMotors(void);
-void setMotorBrake(uint8_t motor, uint8_t setting);
 #endif
 
 

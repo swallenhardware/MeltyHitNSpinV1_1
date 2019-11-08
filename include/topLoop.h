@@ -10,12 +10,11 @@
 
 #include "params.h"
 #include "watchdog.h"
-#include "animations.h"
 #include "serial.h"
+#include "LEDs.h"
 #include "adcs.h"
 #include "motors.h"
 #include "accelerometer.h"
-#include "lidar.h"
 #include "time.h"
 
 void loop(void);

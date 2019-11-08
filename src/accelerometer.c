@@ -10,11 +10,15 @@
 I2C_HandleTypeDef hi2c3;
 
 uint16_t accelZ;
+int16_t magX;
+int16_t magY;
+int16_t magZ;
 
 //the minimum accelerometer reading before we attempt to run meltybrain and POV display
-#define MELTY_MIN_ACCEL 400
+#define MELTY_MIN_ACCEL 200
 
-uint32_t lastMeasTime = 0;
+uint32_t lastAccelMeasTime = 0;
+uint32_t lastMagMeasTime = 0;
 
 uint16_t robotPeriod[2];//measured in microseconds per degree, with some memory for discrete integration
 
@@ -22,6 +26,7 @@ uint16_t robotPeriod[2];//measured in microseconds per degree, with some memory 
 unsigned long accelMeasTime[2];
 
 #define ACCEL_MEASUREMENT_PERIOD 10//in ms
+#define MAG_MEASUREMENT_PERIOD 20//in ms
 
 //this angle (degrees) is calculated only using the accelerometer. We keep it separate to keep our discrete integration algorithms operating smoothly
 //the beacon sets our heading to 0, which would mess up the discrete integration if allowed to affect this variable directly
@@ -80,18 +85,52 @@ void initAccelerometer() {
 	I2C_ClearBusyFlagErratum();
 
     //now initialize the device registers
-    writeI2CReg8Blocking(&hi2c3, I2C_ADDRESS, CTRL_REG1, 0x2E, 1000);
+    writeI2CReg8Blocking(&hi2c3, ACCEL_I2C_ADDRESS, ACCEL_CTRL_REG1, 0x2E, 1000);
 
-	writeI2CReg8Blocking(&hi2c3, I2C_ADDRESS, CTRL_REG4, 0x30, 1000);
+	writeI2CReg8Blocking(&hi2c3, ACCEL_I2C_ADDRESS, ACCEL_CTRL_REG4, 0x30, 1000);
+
+	//initialize the magnetometer
+    writeI2CReg8Blocking(&hi2c3, MAG_I2C_ADDRESS, MAG_CTRL_REG1, 0x7C, 1000);//no temp sense, X/Y UHP mode, 80Hz, no self test
+    writeI2CReg8Blocking(&hi2c3, MAG_I2C_ADDRESS, MAG_CTRL_REG2, 0x40, 1000);// +/-12 guass
+    writeI2CReg8Blocking(&hi2c3, MAG_I2C_ADDRESS, MAG_CTRL_REG3, 0x00, 1000);//continuous conversion mode
+    writeI2CReg8Blocking(&hi2c3, MAG_I2C_ADDRESS, MAG_CTRL_REG4, 0x0C, 1000);//Z UHP mode
+
+}
+
+void runMagnetometer() {
+	//make sure we aren't reading too quickly, the magnetometer only runs at 80Hz
+	if(HAL_GetTick() - lastMagMeasTime > MAG_MEASUREMENT_PERIOD) {
+		lastMagMeasTime = HAL_GetTick();
+
+		readI2CReg16Blocking(&hi2c3, MAG_I2C_ADDRESS, MAG_OUT_Y_L, &magX, 10);
+		readI2CReg16Blocking(&hi2c3, MAG_I2C_ADDRESS, MAG_OUT_Y_L, &magY, 10);
+		readI2CReg16Blocking(&hi2c3, MAG_I2C_ADDRESS, MAG_OUT_Z_L, &magZ, 10);
+
+		periodicReturnMagnetometer(magY, magZ);
+	}
+}
+
+int16_t getMagX() {
+	return magY;
+}
+
+int16_t getMagY() {
+	return magY;
+}
+
+int16_t getMagZ() {
+	return magZ;
 }
 
 void runAccelerometer() {
 	//make sure we aren't reading too quickly, the accelerometer only runs at 100Hz
-	if(HAL_GetTick() - lastMeasTime > ACCEL_MEASUREMENT_PERIOD) {
-		lastMeasTime = HAL_GetTick();
+	if(getMilliseconds() - lastAccelMeasTime > ACCEL_MEASUREMENT_PERIOD) {
+		lastAccelMeasTime = getMilliseconds();
 
 		//TODO: this is a blocking operation. We could gain some clock cycles back by making this interrupt driven
-		uint8_t i2c_stat = readI2CReg16Blocking(&hi2c3, I2C_ADDRESS, OUT_Z_L, &accelZ, 10);
+		uint8_t i2c_stat = readI2CReg16Blocking(&hi2c3, ACCEL_I2C_ADDRESS, ACCEL_OUT_Z_L, &accelZ, 10);
+		//periodicReturnCalibration(getUsPerDeg(), accelZ);
+		//return;
 
 	    //shift all of the old values down
 	    for(int i=1; i>0; i--) {
@@ -103,7 +142,7 @@ void runAccelerometer() {
 		if(i2c_stat != 0) {//If we get here, the accelerometer suddenly doesn't work
 			//try clearing the busy erratum and reading again next loop
 			I2C_ClearBusyFlagErratum();
-			lastMeasTime -= ACCEL_MEASUREMENT_PERIOD;
+			lastAccelMeasTime -= ACCEL_MEASUREMENT_PERIOD;
 		} else {
 			//accellZ has successfully updated with the new accelerometer raw value
 
@@ -113,7 +152,7 @@ void runAccelerometer() {
 		    //this equation has been carefully calibrated for this bot. See here for explanation:
 		    //https://www.swallenhardware.io/battlebots/2018/8/12/halo-pt-9-accelerometer-calibration
 		    robotPeriod[1] = robotPeriod[0];
-		    robotPeriod[0] = (uint32_t) (727 / sqrt((double) (accelZ-225)/522));
+		    robotPeriod[0] = (uint32_t) (549 / sqrt((double) (accelZ-22)/397));
 
 		    //find the new angle
 		    //TRIANGULAR INTEGRATION
@@ -145,7 +184,7 @@ void runHybridSensing() {
 	runAccelerometer();
 
 	if(upToSpeed()) {
-		uint16_t reading = getBandPass();
+		uint16_t reading = getPhotoDiode();
 		if(reading < 1500) {
 			for(int i=BANDPASS_SAMPLES-2; i>=0; i--) {
 				bandPassReadings[i+1] = bandPassReadings[i];
@@ -193,7 +232,7 @@ void runHybridSensing() {
 int16_t getHybridAngle() {
 	int16_t angle = getAccelAngle() - accelTrim;
 	if(angle < 0) angle += 360;
-	angle = (angle + 180) % 360;
+	angle = (angle + 0) % 360;
 	return angle;
 }
 

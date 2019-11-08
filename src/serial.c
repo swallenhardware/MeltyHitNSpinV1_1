@@ -8,8 +8,8 @@
 #include "serial.h"
 
 
-UART_HandleTypeDef huart3;
-DMA_HandleTypeDef hdma_usart3_rx;
+UART_HandleTypeDef huart_radio;
+DMA_HandleTypeDef hdma_usart_rx;
 
 #define SERIAL_RX_SIZE 9
 uint8_t serialRxBuf[SERIAL_RX_SIZE];
@@ -37,23 +37,39 @@ int16_t meltyAngle;
 
 void initSerial() {
 
-	huart3.Instance = USART3;
-	huart3.Init.BaudRate = 57600;
-	huart3.Init.WordLength = UART_WORDLENGTH_8B;
-	huart3.Init.StopBits = UART_STOPBITS_1;
-	huart3.Init.Parity = UART_PARITY_NONE;
-	huart3.Init.Mode = UART_MODE_TX_RX;
-	huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-	huart3.Init.OverSampling = UART_OVERSAMPLING_16;
-	HAL_UART_Init(&huart3);
+	huart_radio.Instance = USART1;
+	huart_radio.Init.BaudRate = 57600;
+	huart_radio.Init.WordLength = UART_WORDLENGTH_8B;
+	huart_radio.Init.StopBits = UART_STOPBITS_1;
+	huart_radio.Init.Parity = UART_PARITY_NONE;
+	huart_radio.Init.Mode = UART_MODE_TX_RX;
+	huart_radio.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+	huart_radio.Init.OverSampling = UART_OVERSAMPLING_16;
+	HAL_UART_Init(&huart_radio);
 
-	HAL_NVIC_SetPriority(USART3_IRQn, 0, 0);
-	HAL_NVIC_EnableIRQ(USART3_IRQn);
+	HAL_NVIC_SetPriority(USART1_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(USART1_IRQn);
+
+	/**USART1 GPIO Configuration
+	PA9     ------> USART1_TX
+	PB7     ------> USART1_RX
+	*/
+
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+	GPIO_InitStruct.Pin = GPIO_PIN_9;
+	GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	GPIO_InitStruct.Alternate = GPIO_AF7_USART1;
+	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+	GPIO_InitStruct.Pin = GPIO_PIN_7;
+	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 }
 
 uint32_t lastSend = 0;
 char sendBuf[11];
-void periodicReturnU16(uint16_t value) {
+void periodicReturnU16_ASCII(uint16_t value) {
 	if(HAL_GetTick() - lastSend > 100) {
 		lastSend = HAL_GetTick();
 		//sprintf, snprintf kept giving me hardfaults, so I said fuck it and wrote my own int to string converter
@@ -72,6 +88,20 @@ void periodicReturnU16(uint16_t value) {
 			}
 		}
 		sendSerial(sendBuf, 5);
+	}
+}
+
+void periodicReturnU16(uint16_t value) {
+	if(HAL_GetTick() - lastSend > 10) {
+		lastSend = HAL_GetTick();
+		//a header to help align the bytes
+		sendBuf[0] = 0x7E;
+
+		//the time
+		sendBuf[1] = (uint8_t) ((value >> 8) & 0x00FF);
+		sendBuf[2] = (uint8_t) (value & 0x00FF);
+
+		sendSerial(sendBuf, 3);
 	}
 }
 
@@ -134,6 +164,25 @@ void periodicReturnCalibration(uint32_t time, uint16_t accel){
 	}
 }
 
+//for seeing the output from the magnetometer
+void periodicReturnMagnetometer(int16_t y, int16_t z) {
+	if(HAL_GetTick() - lastSend > 100) {
+		lastSend = HAL_GetTick();
+		//a header to help align the bytes
+		sendBuf[0] = 0x7E;
+
+		//y
+		sendBuf[1] = (uint8_t) ((y >> 8) & 0x00FF);
+		sendBuf[2] = (uint8_t) (y & 0x00FF);
+
+		//z
+		sendBuf[3] = (uint8_t) ((z >> 8) & 0x00FF);
+		sendBuf[4] = (uint8_t) (z & 0x00FF);
+
+		sendSerial(sendBuf, 5);
+	}
+}
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	UNUSED(huart);
 
@@ -160,12 +209,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 }
 
 void sendSerial(char * buf, uint8_t size) {
-	HAL_UART_Transmit(&huart3, buf, size, 100);
+	HAL_UART_Transmit(&huart_radio, buf, size, 100);
 }
 
 void receiveSerial() {
 	//this sets us up to receive serial data. If we're already set up and waiting, this does nothing
-	HAL_UART_Receive_IT(&huart3, serialRxBuf, SERIAL_RX_SIZE);
+	HAL_UART_Receive_IT(&huart_radio, serialRxBuf, SERIAL_RX_SIZE);
 
 	//if we received a new packet, crunch the numbers
 	if(packetReceived) {
@@ -190,11 +239,11 @@ void receiveSerial() {
 }
 
 void DMA1_Stream1_IRQHandler(void) {
-  HAL_DMA_IRQHandler(&hdma_usart3_rx);
+  HAL_DMA_IRQHandler(&hdma_usart_rx);
 }
 
-void USART3_IRQHandler(void) {
-  HAL_UART_IRQHandler(&huart3);
+void USART1_IRQHandler(void) {
+  HAL_UART_IRQHandler(&huart_radio);
 }
 
 //helper functions
@@ -226,8 +275,8 @@ int16_t getThumbY() {
 	return thumbY;
 }
 
-uint8_t getDirSwitch() {
-	return (status & 0x01) > 0;
+int16_t getDirSwitch() {
+	return 1-2*((status & 0x01) > 0);
 }
 
 uint8_t getModeSwitch() {

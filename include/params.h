@@ -8,15 +8,12 @@
 #ifndef PARAMS_H_
 #define PARAMS_H_
 
-#define MAIN_CLOCK 60//In MHz
+#define MAIN_CLOCK 120//In MHz
 
 //defines for the main state machine
 #define STATE_SAFE 1
 #define STATE_IDLE 2
-#define STATE_PREJUKE 3
-#define STATE_JUKE 4
-#define STATE_DRIVE 5
-#define STATE_SPIN 6
+#define STATE_SPIN 3
 
 #define SENSE_BEACON 0
 //#define SENSE_ACCEL_BEACON 1
